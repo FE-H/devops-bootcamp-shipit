@@ -1,6 +1,12 @@
 {
+<<<<<<< HEAD
   "shipName": "ECHO 419",
   "color": "#4F5D45",
   "shipModel": "hauler",
+=======
+  "shipName": "Nebula Runner",
+  "color": "22d3ee",
+  "shipModel": "fighter",
+>>>>>>> upstream/main
   "emblem": "comet"
 }
