@@ -6,7 +6,8 @@
 import * as THREE from 'three';
 import { createShip, preloadShipTemplates, disposeShip, disposeObject3D } from './ship-mesh.js';
 
-const SIZE = 128; // 2x the largest on-screen box (~26px CSS) so hiDPI stays crisp
+const SIZE = 128; // ~3x the largest on-screen box so hiDPI stays crisp
+const NOSE_POS_Z = new Set(['scout', 'hauler']); // models whose nose points +z instead of -z (scout: engine nozzles confirm; hauler: cockpit-forward reading)
 const cache = new Map(); // `${shipModel}|${color}` -> Promise<string|null>
 let ctx; // lazy { renderer, scene, camera }; null = WebGL unavailable
 let templatesPromise; // cache the promise; all sprite renders share one load
@@ -16,8 +17,10 @@ function setup() {
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setSize(SIZE, SIZE);
     const scene = new THREE.Scene();
+    // Elevated 3/4 vantage: ship stays level (no fake nose-down pitch), the
+    // camera looks down at ~29° so the top surface and silhouette both read.
     const camera = new THREE.OrthographicCamera(-1.6, 1.6, 1.6, -1.6, 0.1, 50);
-    camera.position.set(0, 0, 10);
+    camera.position.set(0, 5.5, 10);
     camera.lookAt(0, 0, 0);
     scene.add(new THREE.HemisphereLight(0xffffff, 0x334155, 0.9));
     const key = new THREE.DirectionalLight(0xffffff, 0.9);
@@ -42,21 +45,35 @@ async function render(shipModel, color) {
   for (const o of [...ship.children]) {
     if (o.isSprite || o.visible === false) { ship.remove(o); disposeObject3D(o); }
   }
-  // 3/4 view, nose toward +x: pure side-on renders these low-poly hulls as a
-  // thin sliver — yawing off-axis and pitching the top toward the camera keeps
-  // the track direction readable while showing an actual ship silhouette.
-  ship.rotation.set(0.55, 1.0, 0);
+  // Yaw the nose toward +x (the track direction), leaning slightly toward the
+  // viewer so the sprite isn't a flat side sliver; the camera above adds the
+  // top-down component — the ship itself stays level. The GLBs disagree on
+  // which axis the nose points down (verified by eye per model), hence the set.
+  ship.rotation.y = NOSE_POS_Z.has(shipModel) ? Math.PI / 2 - 0.4 : -(Math.PI / 2) - 0.4;
   ctx.scene.add(ship);
   ship.updateMatrixWorld(true);
-  // Frame the camera to the hull so it fills the canvas regardless of model size.
+  // Frame the hull in CAMERA space (the camera is tilted, so a world-space
+  // box would mis-frame): project the world box's corners into view space
+  // and fit the ortho frustum around them.
   const box = new THREE.Box3().setFromObject(ship);
-  const size = box.getSize(new THREE.Vector3());
-  const center = box.getCenter(new THREE.Vector3());
-  const half = (Math.max(size.x, size.y) / 2) * 1.1 || 1.6;
-  ctx.camera.left = center.x - half;
-  ctx.camera.right = center.x + half;
-  ctx.camera.top = center.y + half;
-  ctx.camera.bottom = center.y - half;
+  ctx.camera.updateMatrixWorld(true); // lazy until first render — without this the FIRST sprite frames against identity and comes out empty
+  const view = new THREE.Matrix4().copy(ctx.camera.matrixWorld).invert();
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (const x of [box.min.x, box.max.x]) {
+    for (const y of [box.min.y, box.max.y]) {
+      for (const z of [box.min.z, box.max.z]) {
+        const v = new THREE.Vector3(x, y, z).applyMatrix4(view);
+        minX = Math.min(minX, v.x); maxX = Math.max(maxX, v.x);
+        minY = Math.min(minY, v.y); maxY = Math.max(maxY, v.y);
+      }
+    }
+  }
+  const half = (Math.max(maxX - minX, maxY - minY) / 2) * 1.08 || 1.6;
+  const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+  ctx.camera.left = cx - half;
+  ctx.camera.right = cx + half;
+  ctx.camera.top = cy + half;
+  ctx.camera.bottom = cy - half;
   ctx.camera.updateProjectionMatrix();
   ctx.renderer.render(ctx.scene, ctx.camera);
   const url = ctx.renderer.domElement.toDataURL('image/png');
