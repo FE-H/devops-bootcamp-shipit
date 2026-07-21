@@ -15,7 +15,7 @@ jobs:
       - run: bash scripts/report.sh
         env:
           BOARD_URL: ${{ vars.BOARD_URL }}
-          SHIPITTOKEN: ${{ secrets.SHIPITTOKEN }}
+          SHIPITTOKEN: ${{ secrets.SHIPIT_TOKEN }}
 
   deploy:
     needs: test
