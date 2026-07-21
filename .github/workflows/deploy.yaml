@@ -1,4 +1,4 @@
-name: deploy
+name: ci-cd
 on: 
   pull_request:
     types: [opened, synchronize, reopened, closed]
@@ -18,7 +18,7 @@ jobs:
       - run: npm run test
       - run: bash scripts/report.sh
         env:
-          BOARD_URL: ${{ vars.BOARD_URL }}
+          VITE_BOARD_URL: ${{ vars.BOARD_URL }}
           SHIPIT_TOKEN: ${{ secrets.SHIPIT_TOKEN }}
 
   deploy:
